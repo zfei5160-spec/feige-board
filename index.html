@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>万净杭州城市群飞鸽周期工单运营分析看板</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ECharts CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- SheetJS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- PapaParse CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .badge-rank-1 { background-color: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+        .badge-rank-warn { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        #drop-zone-overlay { display: none; }
+        body.drag-over #drop-zone-overlay { display: flex; }
+    </style>
+</head>
+<body class="p-4 md:p-6 custom-scroll relative">
+
+    <!-- Drag and Drop Overlay -->
+    <div id="drop-zone-overlay" class="fixed inset-0 bg-blue-900/80 backdrop-blur-sm z-50 flex-col items-center justify-center text-white p-6 transition-all">
+        <div class="p-8 border-4 border-dashed border-white/60 rounded-3xl text-center flex flex-col items-center max-w-lg">
+            <i data-lucide="file-up" class="w-16 h-16 mb-4 animate-bounce text-blue-200"></i>
+            <h2 class="text-2xl font-bold mb-2">松开鼠标以导入表格</h2>
+            <p class="text-sm text-blue-100 mb-4">支持导入 Excel (.xlsx, .xls) 或 CSV 数据文件</p>
+            <span class="text-xs bg-white/20 px-3 py-1 rounded-full text-blue-200">导入后可点击【锁定为默认底稿】保存</span>
+        </div>
+    </div>
+
+    <!-- Header Controls -->
+    <header class="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                <i data-lucide="trophy" class="w-7 h-7"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                    万净杭州城市群飞鸽周期工单运营分析看板
+                    <span id="draft-source-badge" class="text-xs font-normal text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
+                        已锁定为默认底稿: 杭州城市群标准数据 (12 项)
+                    </span>
+                </h1>
+                <p class="text-xs text-slate-500 mt-0.5" id="draft-subtitle">涵盖 12 项杭州城市群工单记录 (11 项保洁 + 1 项绿化) 的精确排名分析看板</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner" id="workTypeSegment">
+                <button id="wt-btn-all" onclick="setWorkTypeFilter('ALL')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-slate-800 text-white shadow">
+                    <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                    <span>全部工单</span>
+                    <span id="count-type-all" class="bg-slate-600 text-white px-2 py-0.2 rounded-full text-[10px] font-bold">12</span>
+                </button>
+                <button id="wt-btn-baojie" onclick="setWorkTypeFilter('保洁')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                    <span>保洁工单</span>
+                    <span id="count-type-baojie" class="bg-blue-100 text-blue-800 px-2 py-0.2 rounded-full text-[10px] font-bold">11</span>
+                </button>
+                <button id="wt-btn-lvhua" onclick="setWorkTypeFilter('绿化')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 font-bold">
+                    <i data-lucide="trees" class="w-3.5 h-3.5 text-emerald-600"></i>
+                    <span>绿化工单</span>
+                    <span id="count-type-lvhua" class="bg-emerald-500 text-white px-2 py-0.2 rounded-full text-[10px] font-bold">1</span>
+                </button>
+            </div>
+
+            <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition shadow-sm active:scale-95">
+                <i data-lucide="upload" class="w-4 h-4"></i>
+                导入 Excel / CSV
+                <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden">
+            </label>
+
+            <button id="saveDataBtn" onclick="saveAsDefaultDraft()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition shadow-sm active:scale-95">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>锁定为默认底稿</span>
+            </button>
+
+            <button id="resetDefaultBtn" onclick="restoreDefaultData()" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 px-3.5 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 transition shadow-sm" title="重置并重新载入锁定的默认底稿">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <span>恢复默认底稿</span>
+            </button>
+
+            <button id="resetSystemBtn" onclick="resetToSystemFactory()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-2 rounded-xl text-xs font-medium flex items-center gap-1 transition shadow-sm" title="恢复出厂 12 条精确底稿">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>重置出厂底稿</span>
+            </button>
+
+            <button onclick="exportCSV()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 transition shadow-sm">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                导出当前 CSV
+            </button>
+
+            <button onclick="resetFilters()" class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition border border-slate-200" title="重置全部筛选">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Rule Banner -->
+    <div class="card p-4 mb-6 bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-slate-50 border-blue-200">
+        <div class="flex items-center gap-2 font-semibold text-blue-900 text-sm mb-2">
+            <i data-lucide="award" class="w-4 h-4 text-blue-600"></i>
+            周期工单运营考核计算规则 & 评分标准
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-600">
+            <div class="bg-white/80 p-3 rounded-lg border border-blue-100">
+                <span class="font-bold text-slate-700">◆ 指标定义公式（排名唯一依据）：</span><br>
+                <code class="text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded font-mono font-bold mt-1 inline-block">
+                    周期工单指标达成率 = 周期工单质检合格数 / (周期工单已完成工单数 + 周期工单已超时工单数)
+                </code>
+            </div>
+            <div class="bg-white/80 p-3 rounded-lg border border-blue-100">
+                <span class="font-bold text-slate-700">◆ 评分与排名标准：</span>
+                <ul class="list-disc list-inside mt-1 space-y-0.5 text-slate-600">
+                    <li><strong class="text-emerald-600">达成率 = 100%</strong>：得分 <span class="font-bold text-emerald-700">1.0 分</span>（共同排名第 1 名）</li>
+                    <li><strong class="text-amber-600">88% ≤ 达成率 &lt; 100%</strong>：得分 <span class="font-bold text-amber-700">0.6 ~ 1.0 分</span>（线性计算，未达 100% 最高 0.99 分）</li>
+                    <li><strong class="text-red-600">达成率 &lt; 88%</strong>：得分 <span class="font-bold text-red-600">0 分</span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8 KPI Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
+        <div class="card p-3 border-l-4 border-l-blue-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                总派发工单数 <i data-lucide="send" class="w-3.5 h-3.5 text-blue-500"></i>
+            </div>
+            <div class="text-xl font-bold text-slate-800 mt-1" id="kpi-dispatch">1,847</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-completed-sub">已完成: 1,678 件 (90.8%)</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-emerald-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                工单完成率 <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i>
+            </div>
+            <div class="text-xl font-bold text-emerald-600 mt-1" id="kpi-comp-rate">90.85%</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-comp-sub">1,678 / 1,847</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-rose-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                工单超时总数 <i data-lucide="clock" class="w-3.5 h-3.5 text-rose-500"></i>
+            </div>
+            <div class="text-xl font-bold text-rose-600 mt-1" id="kpi-overdue">30</div>
+            <div class="text-[10px] text-rose-600 mt-1 font-medium" id="kpi-overdue-sub">占比: 1.62%</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-red-600">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                质检不合格总数 <i data-lucide="alert-octagon" class="w-3.5 h-3.5 text-red-600"></i>
+            </div>
+            <div class="text-xl font-bold text-slate-800 mt-1" id="kpi-qa-fail">0</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-qa-fail-sub">占比: 0.00%</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-cyan-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                质检合格率 <i data-lucide="shield-check" class="w-3.5 h-3.5 text-cyan-500"></i>
+            </div>
+            <div class="text-xl font-bold text-slate-800 mt-1" id="kpi-qa-rate">100.00%</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-qa-sub">合格 1,678 / 质检 1,678</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-amber-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                虚假工单总数 <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500"></i>
+            </div>
+            <div class="text-xl font-bold text-slate-800 mt-1" id="kpi-fake">0</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-fake-sub">发生率: 0.00%</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-indigo-500">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                指标达成率 <i data-lucide="target" class="w-3.5 h-3.5 text-indigo-500"></i>
+            </div>
+            <div class="text-xl font-bold text-indigo-600 mt-1" id="kpi-achieve-rate">98.24%</div>
+            <div class="text-[10px] text-slate-500 mt-1" id="kpi-achieve-sub">合格 1,678 / (1678+30)</div>
+        </div>
+        <div class="card p-3 border-l-4 border-l-amber-400 bg-amber-50/20">
+            <div class="text-xs text-slate-500 font-medium flex items-center justify-between">
+                考核综合得分 <i data-lucide="star" class="w-3.5 h-3.5 text-amber-500"></i>
+            </div>
+            <div class="text-xl font-bold text-amber-600 mt-1" id="kpi-score">0.94 分</div>
+            <div class="text-[10px] text-slate-500 mt-1">标准满分 1.0 分</div>
+        </div>
+    </div>
+
+    <!-- Filter Selectors -->
+    <div class="card p-4 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">城市群筛选</label>
+                <select id="filterCluster" onchange="onClusterChange()" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="ALL">全部城市群</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">城市筛选</label>
+                <select id="filterCity" onchange="applyFilters()" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="ALL">全部城市</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">异常分类排查筛选</label>
+                <select id="filterAnomaly" onchange="applyFilters()" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-700">
+                    <option value="ALL">全部蝶城工单 (正常+异常)</option>
+                    <option value="OVERDUE">仅看超时工单蝶城 (>0)</option>
+                    <option value="FAKE">仅看虚假工单蝶城 (>0)</option>
+                    <option value="QA_FAIL">仅看质检不合格蝶城 (>0)</option>
+                    <option value="ANY_ANOMALY">仅看任意异常工单蝶城</option>
+                </select>
+            </div>
+
+            <div class="flex items-end gap-2">
+                <div class="flex-1">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">蝶城检索</label>
+                    <input type="text" id="searchDiecheng" oninput="applyFilters()" placeholder="检索蝶城名称..." class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <button onclick="resetFilters()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition">
+                    重置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard View -->
+    <div class="card p-4 mb-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2 border-b border-slate-200 pb-3">
+            <div>
+                <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="list-ordered" class="w-5 h-5 text-amber-500"></i>
+                    三级运营考核全景排行榜 (<span id="leaderboard-type-label" class="text-purple-600">全量工单类型</span>)
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">按指标达成率精确排序，同达成率实体共享相同名次，有超时工单的项目触发赤字预警</p>
+            </div>
+            <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-medium">
+                <button id="tab-cluster" onclick="switchLeaderboardTab('cluster')" class="px-3 py-1.5 rounded-md bg-white text-slate-800 shadow-sm font-semibold">城市群排名榜 (<span id="count-cluster">0</span>)</button>
+                <button id="tab-city" onclick="switchLeaderboardTab('city')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900">城市排名榜 (<span id="count-city">0</span>)</button>
+                <button id="tab-diecheng" onclick="switchLeaderboardTab('diecheng')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900">蝶城排名榜 (<span id="count-diecheng">0</span>)</button>
+            </div>
+        </div>
+
+        <div id="leaderboard-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[360px] overflow-y-auto custom-scroll pr-1">
+            <!-- Dynamic leaderboard cards -->
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="card p-4">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-slate-800 text-sm">各城市群指标达成率排名</h3>
+                <span class="text-xs text-slate-500">按指标达成率从高到低</span>
+            </div>
+            <div id="chartCluster" class="w-full h-[360px]"></div>
+        </div>
+
+        <div class="card p-4">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-slate-800 text-sm">全量蝶城指标达成率排名榜</h3>
+                <div class="flex items-center gap-1 text-xs">
+                    <button onclick="setDiechengFilter('tail')" id="btn-tail" class="px-2.5 py-1 rounded bg-rose-100 text-rose-700 font-semibold">预警倒数项目</button>
+                    <button onclick="setDiechengFilter('top')" id="btn-top" class="px-2.5 py-1 rounded bg-slate-100 text-slate-600">优秀前列项目</button>
+                    <button onclick="setDiechengFilter('all')" id="btn-all" class="px-2.5 py-1 rounded bg-slate-100 text-slate-600">全量项目</button>
+                </div>
+            </div>
+            <div id="chartDiecheng" class="w-full h-[360px]"></div>
+        </div>
+    </div>
+
+    <!-- Detailed Table -->
+    <div class="card p-4 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i data-lucide="table" class="w-4 h-4 text-blue-600"></i>
+                明细数据列表
+            </h3>
+            <span class="text-xs text-slate-500 font-semibold" id="table-count">共 12 条数据</span>
+        </div>
+        <div class="overflow-x-auto custom-scroll">
+            <table class="w-full text-xs text-left border-collapse whitespace-nowrap">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                        <th class="p-2.5 text-center">排名/名次</th>
+                        <th class="p-2.5">城市群</th>
+                        <th class="p-2.5">城市</th>
+                        <th class="p-2.5">蝶城名称</th>
+                        <th class="p-2.5">工单类别</th>
+                        <th class="p-2.5">工单类型</th>
+                        <th class="p-2.5 text-right">工单派发数</th>
+                        <th class="p-2.5 text-right">工单完成数</th>
+                        <th class="p-2.5 text-right">工单超时数</th>
+                        <th class="p-2.5 text-right">工单完成率</th>
+                        <th class="p-2.5 text-right">总质检数</th>
+                        <th class="p-2.5 text-right">质检合格数</th>
+                        <th class="p-2.5 text-right">质检不合格数</th>
+                        <th class="p-2.5 text-right">质检合格率</th>
+                        <th class="p-2.5 text-right">虚假工单数</th>
+                        <th class="p-2.5 text-right">指标达成率</th>
+                        <th class="p-2.5 text-center">考核得分</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-slate-200">
+                    <!-- Dynamic Table Rows -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        var rawDataset = [];
+        var currentFilteredData = [];
+        var globalRankMap = new Map();
+        var currentTab = 'cluster';
+        var diechengViewMode = 'tail';
+        var activeWorkTypeFilter = 'ALL';
+        var activeSourceName = "杭州城市群真实底稿(含超时)";
+
+        var clusterChart = null;
+        var diechengChart = null;
+
+        // 100% 对齐用户最新截图 (image_8a8b61.png) 录入真实超时数的 12 条精确底稿
+        var mockDataset = [
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海七宝镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 289, "工单完成数": 267, "工单超时数": 22, "工单完成率": 0.9239, "总质检数": 267, "质检合格数": 267, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海三林镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 203, "工单完成数": 203, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 203, "质检合格数": 203, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海吴泾镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 156, "工单完成数": 152, "工单超时数": 4, "工单完成率": 0.9744, "总质检数": 152, "质检合格数": 152, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海宜川路", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 29, "工单完成数": 29, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 29, "质检合格数": 29, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海康桥镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 270, "工单完成数": 270, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 270, "质检合格数": 270, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海杨行镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 69, "工单完成数": 69, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 69, "质检合格数": 69, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海花木", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 192, "工单完成数": 192, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 192, "质检合格数": 192, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "上海马桥镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 73, "工单完成数": 73, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 73, "质检合格数": 73, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "上海万净", "蝶城名称": "南通唐闸镇", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 108, "工单完成数": 107, "工单超时数": 1, "工单完成率": 0.9907, "总质检数": 107, "质检合格数": 107, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "宁波万净", "蝶城名称": "宁波骆驼", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 174, "工单完成数": 171, "工单超时数": 3, "工单完成率": 0.9828, "总质检数": 171, "质检合格数": 171, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "杭州万净", "蝶城名称": "杭州新街", "工单类别": "周期", "工单类型": "保洁", "工单派发数": 128, "工单完成数": 128, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 128, "质检合格数": 128, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 },
+            { "城市群": "杭州城市群", "城市": "杭州万净", "蝶城名称": "杭州良渚", "工单类别": "周期", "工单类型": "绿化", "工单派发数": 156, "工单完成数": 17, "工单超时数": 0, "工单完成率": 1.0, "总质检数": 17, "质检合格数": 17, "质检不合格数": 0, "质检合格率": 1.0, "虚假工单数": 0 }
+        ];
+
+        var STORAGE_KEY_NAME = 'FEIGE_HZ_IMAGE_TIMEOUT_V2026_NAME';
+        var STORAGE_KEY_DATA = 'FEIGE_HZ_IMAGE_TIMEOUT_V2026_DATA';
+
+        function showToast(message, type) {
+            type = type || 'info';
+            var container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none';
+                document.body.appendChild(container);
+            }
+            var toast = document.createElement('div');
+            var bg = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-slate-800');
+            toast.className = bg + ' text-white px-4 py-2.5 rounded-xl text-xs shadow-lg transition-all duration-300 opacity-0 transform translate-y-2 flex items-center gap-2 pointer-events-auto';
+            toast.innerHTML = '<span>' + message + '</span>';
+            container.appendChild(toast);
+            setTimeout(function() { toast.classList.remove('opacity-0', 'translate-y-2'); }, 10);
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+            }, 3000);
+        }
+
+        function calcPerformance(qaPassCount, completedCount, overdueCount) {
+            var denominator = completedCount + overdueCount;
+            if (denominator === 0) return { rate: 0, score: 0 };
+            var rate = qaPassCount / denominator;
+            var score = 0;
+
+            if (rate >= 1.0) {
+                score = 1.0;
+            } else if (rate >= 0.88) {
+                score = 0.6 + ((rate - 0.88) / 0.12) * 0.4;
+                score = Math.min(0.99, score);
+            } else {
+                score = 0;
+            }
+
+            return { rate: rate, score: parseFloat(score.toFixed(2)) };
+        }
+
+        function restoreDefaultData() {
+            var savedName = localStorage.getItem(STORAGE_KEY_NAME);
+            var savedData = localStorage.getItem(STORAGE_KEY_DATA);
+
+            if (savedData) {
+                try {
+                    var parsed = JSON.parse(savedData);
+                    if (parsed && parsed.length > 0) {
+                        loadDataset(parsed, savedName || "锁定的默认底稿");
+                        showToast('已成功恢复至您锁定的默认底稿 (' + parsed.length + '条)！', 'success');
+                        return;
+                    }
+                } catch(e) {
+                    console.warn("Parse saved draft error:", e);
+                }
+            }
+
+            loadDataset(mockDataset, "杭州城市群真实底稿(含超时)");
+            showToast('已加载 12 条含真实超时数的标准底稿', 'info');
+        }
+
+        function resetToSystemFactory() {
+            try {
+                localStorage.removeItem(STORAGE_KEY_NAME);
+                localStorage.removeItem(STORAGE_KEY_DATA);
+            } catch (e) {
+                console.warn("Clear storage error:", e);
+            }
+
+            loadDataset(mockDataset, "杭州城市群真实底稿(含超时)");
+            showToast('已重置为出厂 12 条精确底稿！', 'success');
+        }
+
+        function saveAsDefaultDraft() {
+            try {
+                if (!rawDataset || rawDataset.length === 0) {
+                    showToast('当前没有数据可保存', 'error');
+                    return;
+                }
+                localStorage.setItem(STORAGE_KEY_NAME, activeSourceName);
+                localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(rawDataset));
+                
+                document.getElementById('draft-source-badge').textContent = '已锁定为默认底稿: ' + activeSourceName + ' (' + rawDataset.length + ' 项)';
+                document.getElementById('draft-source-badge').className = 'text-xs font-normal text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold';
+
+                showToast('已成功将 [' + activeSourceName + '] 锁定为您的默认底稿！', 'success');
+            } catch (err) {
+                console.error("Save error:", err);
+                showToast('保存底稿失败，请检查浏览器存储权限', 'error');
+            }
+        }
+
+        function setWorkTypeFilter(typeKey) {
+            activeWorkTypeFilter = typeKey;
+
+            var btnAll = document.getElementById('wt-btn-all');
+            var btnBaojie = document.getElementById('wt-btn-baojie');
+            var btnLvhua = document.getElementById('wt-btn-lvhua');
+
+            if (btnAll && btnBaojie && btnLvhua) {
+                btnAll.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900";
+                btnBaojie.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900";
+                btnLvhua.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900";
+
+                if (typeKey === 'ALL') {
+                    btnAll.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-slate-800 text-white shadow";
+                } else if (typeKey === '保洁') {
+                    btnBaojie.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-blue-600 text-white shadow";
+                } else if (typeKey === '绿化') {
+                    btnLvhua.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow";
+                }
+            }
+
+            var typeLabel = document.getElementById('leaderboard-type-label');
+            if (typeLabel) {
+                if (typeKey === '保洁') {
+                    typeLabel.textContent = "保洁工单";
+                    typeLabel.className = "text-blue-600 font-bold";
+                } else if (typeKey === '绿化') {
+                    typeLabel.textContent = "绿化工单";
+                    typeLabel.className = "text-emerald-600 font-bold";
+                } else {
+                    typeLabel.textContent = "全量工单类型";
+                    typeLabel.className = "text-purple-600 font-bold";
+                }
+            }
+
+            applyFilters();
+        }
+
+        function updateWorkTypeCounts() {
+            var countAll = rawDataset.length;
+            var countBaojie = rawDataset.filter(function(d){ return (d["工单类型"]||'').indexOf('保洁') !== -1 || (d["工单类型"]||'').indexOf('清洁') !== -1; }).length;
+            var countLvhua = rawDataset.filter(function(d){ return (d["工单类型"]||'').indexOf('绿化') !== -1; }).length;
+
+            document.getElementById('count-type-all').textContent = countAll;
+            document.getElementById('count-type-baojie').textContent = countBaojie;
+            document.getElementById('count-type-lvhua').textContent = countLvhua;
+        }
+
+        function computeGlobalRankings(data) {
+            globalRankMap.clear();
+            var diechengMap = new Map();
+
+            data.forEach(function(item) {
+                var name = item["蝶城名称"];
+                if (!diechengMap.has(name)) {
+                    diechengMap.set(name, { qaPass: 0, completed: 0, overdue: 0 });
+                }
+                var cur = diechengMap.get(name);
+                cur.qaPass += item["质检合格数"] || 0;
+                cur.completed += item["工单完成数"] || 0;
+                cur.overdue += item["工单超时数"] || 0;
+            });
+
+            var list = [];
+            diechengMap.forEach(function(val, name) {
+                var perf = calcPerformance(val.qaPass, val.completed, val.overdue);
+                list.push({ name: name, rate: perf.rate, score: perf.score, overdue: val.overdue });
+            });
+
+            list.sort(function(a, b) { return b.rate - a.rate; });
+
+            var currentRank = 1;
+            for (var i = 0; i < list.length; i++) {
+                if (i > 0 && list[i].rate < list[i - 1].rate) {
+                    currentRank = i + 1;
+                }
+                var sameRateCount = list.filter(function(x) { return x.rate === list[i].rate; }).length;
+                var isJoint = sameRateCount > 1;
+                
+                var rankLabel = list[i].rate === 1.0 
+                    ? `第 ${currentRank} 名 (并列)` 
+                    : `第 ${currentRank} 名 (${(list[i].rate * 100).toFixed(2)}%)`;
+
+                globalRankMap.set(list[i].name, {
+                    rankNumber: currentRank,
+                    rankText: rankLabel,
+                    isJoint: isJoint,
+                    overdue: list[i].overdue
+                });
+            }
+        }
+
+        window.onload = function() {
+            if (typeof lucide !== 'undefined') {
+                try { lucide.createIcons(); } catch(e){}
+            }
+            initCharts();
+            setupDragAndDrop();
+
+            var savedName = localStorage.getItem(STORAGE_KEY_NAME);
+            var savedData = localStorage.getItem(STORAGE_KEY_DATA);
+
+            if (savedData) {
+                try {
+                    var parsedData = JSON.parse(savedData);
+                    if (parsedData && parsedData.length > 0) {
+                        loadDataset(parsedData, savedName || "锁定的默认底稿");
+                        showToast('已载入您锁定的默认底稿：' + (savedName || "自定义底稿") + ' (' + parsedData.length + '条)', 'success');
+                        return;
+                    }
+                } catch(e) {
+                    console.warn("Read saved error:", e);
+                }
+            }
+
+            loadDataset(mockDataset, "杭州城市群真实底稿(含超时)");
+
+            var fileInput = document.getElementById('fileInput');
+            if (fileInput) {
+                fileInput.addEventListener('change', function(e) {
+                    handleFileUpload(e.target.files[0]);
+                    this.value = '';
+                });
+            }
+        };
+
+        function setupDragAndDrop() {
+            var dragCounter = 0;
+            document.addEventListener('dragenter', function(e) {
+                e.preventDefault();
+                dragCounter++;
+                document.body.classList.add('drag-over');
+            });
+            document.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragCounter = 0;
+                    document.body.classList.remove('drag-over');
+                }
+            });
+            document.addEventListener('dragover', function(e) { e.preventDefault(); });
+            document.addEventListener('drop', function(e) {
+                e.preventDefault();
+                dragCounter = 0;
+                document.body.classList.remove('drag-over');
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFileUpload(e.dataTransfer.files[0]);
+                }
+            });
+        }
+
+        function loadDataset(dataset, sourceName) {
+            activeSourceName = sourceName || "导入表格";
+            rawDataset = dataset.map(function(item) {
+                var dispatch = Number(item["工单派发数"]) || 0;
+                var completed = Number(item["工单完成数"]) || 0;
+                var overdue = Number(item["工单超时数"]) || 0;
+                var qaPass = Number(item["质检合格数"]) || 0;
+
+                var qaTotal = Number(item["总质检数"]) || completed;
+                if (qaTotal < qaPass) {
+                    qaTotal = Math.max(qaPass, completed);
+                }
+
+                var qaFail = Math.max(0, qaTotal - qaPass);
+                var compRate = dispatch > 0 ? (completed / dispatch) : 1.0;
+                var perf = calcPerformance(qaPass, completed, overdue);
+
+                return {
+                    "城市群": item["城市群"] || "杭州城市群",
+                    "城市": item["城市"] || "上海万净",
+                    "蝶城名称": item["蝶城名称"] || "未知蝶城",
+                    "工单类别": item["工单类别"] || "周期",
+                    "工单类型": item["工单类型"] || "保洁",
+                    "工单派发数": dispatch,
+                    "工单完成数": completed,
+                    "工单超时数": overdue,
+                    "工单完成率": compRate,
+                    "总质检数": qaTotal,
+                    "质检合格数": qaPass,
+                    "质检不合格数": qaFail,
+                    "质检合格率": qaTotal > 0 ? qaPass / qaTotal : 1.0,
+                    "虚假工单数": Number(item["虚假工单数"]) || 0,
+                    "指标达成率": perf.rate,
+                    "考核得分": perf.score
+                };
+            });
+
+            var baojieCount = rawDataset.filter(function(d){ return (d["工单类型"]||'').indexOf('保洁') !== -1 || (d["工单类型"]||'').indexOf('清洁') !== -1; }).length;
+            var lvhuaCount = rawDataset.filter(function(d){ return (d["工单类型"]||'').indexOf('绿化') !== -1; }).length;
+
+            document.getElementById('draft-source-badge').textContent = `已锁定为默认底稿: ${activeSourceName} (${rawDataset.length} 项)`;
+            document.getElementById('draft-subtitle').textContent = `涵盖 ${rawDataset.length} 项杭州城市群工单记录 (${baojieCount} 项保洁 + ${lvhuaCount} 项绿化) 的精确排名分析看板`;
+
+            updateWorkTypeCounts();
+            populateClusterDropdown();
+            setWorkTypeFilter(activeWorkTypeFilter);
+        }
+
+        function populateClusterDropdown() {
+            var clusterSelect = document.getElementById('filterCluster');
+            clusterSelect.innerHTML = '<option value="ALL">全部城市群</option>';
+
+            var clusters = [...new Set(rawDataset.map(function(d) { return d["城市群"]; }))].filter(Boolean);
+            clusters.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                clusterSelect.appendChild(opt);
+            });
+
+            populateCityDropdown();
+        }
+
+        function onClusterChange() {
+            populateCityDropdown();
+            applyFilters();
+        }
+
+        function populateCityDropdown() {
+            var selectedCluster = document.getElementById('filterCluster').value;
+            var citySelect = document.getElementById('filterCity');
+            citySelect.innerHTML = '<option value="ALL">全部城市</option>';
+
+            var filtered = rawDataset;
+            if (selectedCluster !== 'ALL') {
+                filtered = rawDataset.filter(function(d) { return d["城市群"] === selectedCluster; });
+            }
+
+            var cities = [...new Set(filtered.map(function(d) { return d["城市"]; }))].filter(Boolean);
+            cities.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                citySelect.appendChild(opt);
+            });
+        }
+
+        function applyFilters() {
+            var clusterVal = document.getElementById('filterCluster').value;
+            var cityVal = document.getElementById('filterCity').value;
+            var searchVal = document.getElementById('searchDiecheng').value.trim().toLowerCase();
+            var anomalyVal = document.getElementById('filterAnomaly').value;
+
+            currentFilteredData = rawDataset.filter(function(item) {
+                if (activeWorkTypeFilter !== 'ALL') {
+                    if (activeWorkTypeFilter === '保洁' && ((item["工单类型"]||'').indexOf('保洁') === -1 && (item["工单类型"]||'').indexOf('清洁') === -1)) {
+                        return false;
+                    }
+                    if (activeWorkTypeFilter === '绿化' && (item["工单类型"]||'').indexOf('绿化') === -1) {
+                        return false;
+                    }
+                }
+
+                if (clusterVal !== 'ALL' && item["城市群"] !== clusterVal) return false;
+                if (cityVal !== 'ALL' && item["城市"] !== cityVal) return false;
+                if (searchVal && item["蝶城名称"].toLowerCase().indexOf(searchVal) === -1) return false;
+
+                if (anomalyVal === 'OVERDUE' && (item["工单超时数"] || 0) <= 0) return false;
+                if (anomalyVal === 'FAKE' && (item["虚假工单数"] || 0) <= 0) return false;
+                if (anomalyVal === 'QA_FAIL' && (item["质检不合格数"] || 0) <= 0) return false;
+                if (anomalyVal === 'ANY_ANOMALY') {
+                    var hasOverdue = (item["工单超时数"] || 0) > 0;
+                    var hasFake = (item["虚假工单数"] || 0) > 0;
+                    var hasQaFail = (item["质检不合格数"] || 0) > 0;
+                    if (!hasOverdue && !hasFake && !hasQaFail) return false;
+                }
+
+                return true;
+            });
+
+            computeGlobalRankings(currentFilteredData);
+            updateKPIs(currentFilteredData);
+            renderLeaderboard();
+            updateCharts(currentFilteredData);
+            renderTable(currentFilteredData);
+        }
+
+        function updateKPIs(data) {
+            var dispatch = 0, completed = 0, overdue = 0;
+            var qaTotal = 0, qaPass = 0, qaFail = 0, fake = 0;
+
+            data.forEach(function(d) {
+                dispatch += Number(d["工单派发数"]) || 0;
+                completed += Number(d["工单完成数"]) || 0;
+                overdue += Number(d["工单超时数"]) || 0;
+                qaTotal += Number(d["总质检数"]) || 0;
+                qaPass += Number(d["质检合格数"]) || 0;
+                qaFail += Number(d["质检不合格数"]) || 0;
+                fake += Number(d["虚假工单数"]) || 0;
+            });
+
+            var compRate = dispatch > 0 ? (completed / dispatch) : 0;
+            var overdueRate = dispatch > 0 ? (overdue / dispatch) : 0;
+            var qaRate = qaTotal > 0 ? (qaPass / qaTotal) : 0;
+            var qaFailRate = qaTotal > 0 ? (qaFail / qaTotal) : 0;
+            var fakeRate = dispatch > 0 ? (fake / dispatch) : 0;
+
+            var perf = calcPerformance(qaPass, completed, overdue);
+
+            document.getElementById('kpi-dispatch').textContent = dispatch.toLocaleString();
+            document.getElementById('kpi-completed-sub').textContent = '已完成: ' + completed.toLocaleString() + ' 件 (' + (compRate * 100).toFixed(1) + '%)';
+
+            document.getElementById('kpi-comp-rate').textContent = (compRate * 100).toFixed(2) + '%';
+            document.getElementById('kpi-comp-sub').textContent = completed.toLocaleString() + ' / ' + dispatch.toLocaleString();
+
+            document.getElementById('kpi-overdue').textContent = overdue.toLocaleString();
+            document.getElementById('kpi-overdue-sub').textContent = '占比: ' + (overdueRate * 100).toFixed(2) + '%';
+
+            document.getElementById('kpi-qa-fail').textContent = qaFail.toLocaleString();
+            document.getElementById('kpi-qa-fail-sub').textContent = '占比: ' + (qaFailRate * 100).toFixed(2) + '%';
+
+            document.getElementById('kpi-qa-rate').textContent = (qaRate * 100).toFixed(2) + '%';
+            document.getElementById('kpi-qa-sub').textContent = '合格 ' + qaPass.toLocaleString() + ' / 质检 ' + qaTotal.toLocaleString();
+
+            document.getElementById('kpi-fake').textContent = fake.toLocaleString();
+            document.getElementById('kpi-fake-sub').textContent = '发生率: ' + (fakeRate * 100).toFixed(2) + '%';
+
+            document.getElementById('kpi-achieve-rate').textContent = (perf.rate * 100).toFixed(2) + '%';
+            document.getElementById('kpi-achieve-sub').textContent = '合格 ' + qaPass.toLocaleString() + ' / (' + completed + '+' + overdue + ')';
+
+            document.getElementById('kpi-score').textContent = perf.score.toFixed(2) + ' 分';
+        }
+
+        function switchLeaderboardTab(tab) {
+            currentTab = tab;
+            ['cluster', 'city', 'diecheng'].forEach(function(t) {
+                var btn = document.getElementById('tab-' + t);
+                if (t === tab) {
+                    btn.className = 'px-3 py-1.5 rounded-md bg-white text-slate-800 shadow-sm font-semibold';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900';
+                }
+            });
+            renderLeaderboard();
+        }
+
+        function renderLeaderboard() {
+            var container = document.getElementById('leaderboard-container');
+            container.innerHTML = '';
+
+            var groupMap = new Map();
+            var groupKey = currentTab === 'cluster' ? '城市群' : (currentTab === 'city' ? '城市' : '蝶城名称');
+
+            currentFilteredData.forEach(function(item) {
+                var name = item[groupKey];
+                if (!groupMap.has(name)) {
+                    groupMap.set(name, { qaPass: 0, completed: 0, overdue: 0, dispatch: 0, types: new Set() });
+                }
+                var cur = groupMap.get(name);
+                cur.qaPass += item["质检合格数"] || 0;
+                cur.completed += item["工单完成数"] || 0;
+                cur.overdue += item["工单超时数"] || 0;
+                cur.dispatch += item["工单派发数"] || 0;
+                if (item["工单类型"]) cur.types.add(item["工单类型"]);
+            });
+
+            var list = [];
+            groupMap.forEach(function(val, name) {
+                var perf = calcPerformance(val.qaPass, val.completed, val.overdue);
+                var rankInfo = null;
+                if (currentTab === 'diecheng') {
+                    rankInfo = globalRankMap.get(name);
+                }
+                list.push({ name: name, qaPass: val.qaPass, completed: val.completed, overdue: val.overdue, dispatch: val.dispatch, rate: perf.rate, score: perf.score, rankInfo: rankInfo, types: val.types });
+            });
+
+            list.sort(function(a, b) { return b.rate - a.rate; });
+
+            document.getElementById('count-cluster').textContent = currentTab === 'cluster' ? list.length : [...new Set(currentFilteredData.map(function(d){ return d["城市群"]; }))].length;
+            document.getElementById('count-city').textContent = currentTab === 'city' ? list.length : [...new Set(currentFilteredData.map(function(d){ return d["城市"]; }))].length;
+            document.getElementById('count-diecheng').textContent = currentTab === 'diecheng' ? list.length : [...new Set(currentFilteredData.map(function(d){ return d["蝶城名称"]; }))].length;
+
+            var currentRank = 1;
+            list.forEach(function(item, index) {
+                if (index > 0 && item.rate < list[index - 1].rate) {
+                    currentRank = index + 1;
+                }
+
+                var hasOverdue = item.overdue > 0;
+                var badgeClass = hasOverdue ? 'badge-rank-warn' : 'badge-rank-1';
+                var rankDisplay = `🥇 第 ${currentRank} 名`;
+
+                if (item.rankInfo) {
+                    rankDisplay = item.rankInfo.rankText;
+                }
+
+                var typeBadgeHtml = '';
+                if (activeWorkTypeFilter === 'ALL' && item.types && item.types.has('绿化')) {
+                    typeBadgeHtml = '<span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold ml-1">绿化</span>';
+                }
+
+                var overdueTag = hasOverdue ? `<span class="text-[10px] text-red-600 font-bold bg-red-50 px-1 rounded ml-1">超时:${item.overdue}件</span>` : '';
+
+                var card = document.createElement('div');
+                card.className = 'card p-3 flex flex-col justify-between hover:border-blue-300 transition';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-1 mb-1">
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeClass}">${rankDisplay}</span>
+                        <span class="text-xs font-bold text-emerald-600">${item.score.toFixed(2)} 分</span>
+                    </div>
+                    <div class="font-bold text-slate-800 text-sm truncate my-1 flex items-center" title="${item.name}">
+                        <span class="truncate">${item.name}</span>
+                        ${typeBadgeHtml}
+                        ${overdueTag}
+                    </div>
+                    <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-1">
+                        <div>达成率: <strong class="${hasOverdue ? 'text-red-600' : 'text-indigo-600'}">${(item.rate * 100).toFixed(2)}%</strong></div>
+                        <div>派发: <strong>${item.dispatch.toLocaleString()}</strong></div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function initCharts() {
+            var cEl = document.getElementById('chartCluster');
+            var dEl = document.getElementById('chartDiecheng');
+            if (cEl) clusterChart = echarts.init(cEl);
+            if (dEl) diechengChart = echarts.init(dEl);
+
+            window.addEventListener('resize', function() {
+                if (clusterChart) clusterChart.resize();
+                if (diechengChart) diechengChart.resize();
+            });
+        }
+
+        function updateCharts(data) {
+            if (!clusterChart || !diechengChart) return;
+
+            var clusterMap = new Map();
+            data.forEach(function(item) {
+                var name = item["城市群"];
+                if (!clusterMap.has(name)) clusterMap.set(name, { qaPass: 0, completed: 0, overdue: 0 });
+                var cur = clusterMap.get(name);
+                cur.qaPass += item["质检合格数"] || 0;
+                cur.completed += item["工单完成数"] || 0;
+                cur.overdue += item["工单超时数"] || 0;
+            });
+
+            var clusterList = [];
+            clusterMap.forEach(function(val, name) {
+                var perf = calcPerformance(val.qaPass, val.completed, val.overdue);
+                clusterList.push({ name: name, rate: perf.rate, score: perf.score });
+            });
+            clusterList.sort(function(a, b) { return a.rate - b.rate; });
+
+            clusterChart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        return params[0].name + '<br/>指标达成率: ' + (params[0].value * 100).toFixed(2) + '%';
+                    }
+                },
+                grid: { top: 15, right: 60, bottom: 20, left: 100 },
+                xAxis: { type: 'value', min: 0.8, max: 1, axisLabel: { formatter: function(v) { return (v * 100) + '%'; } } },
+                yAxis: { type: 'category', data: clusterList.map(function(c) { return c.name; }) },
+                series: [{
+                    type: 'bar',
+                    data: clusterList.map(function(c) { return c.rate; }),
+                    barMaxWidth: 18,
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#3b82f6' }, { offset: 1, color: '#6366f1' }]),
+                        borderRadius: [0, 4, 4, 0]
+                    },
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: function(params) { return (params.value * 100).toFixed(2) + '%'; }
+                    }
+                }]
+            });
+
+            var diechengMap = new Map();
+            data.forEach(function(item) {
+                var name = item["蝶城名称"];
+                if (!diechengMap.has(name)) diechengMap.set(name, { qaPass: 0, completed: 0, overdue: 0 });
+                var cur = diechengMap.get(name);
+                cur.qaPass += item["质检合格数"] || 0;
+                cur.completed += item["工单完成数"] || 0;
+                cur.overdue += item["工单超时数"] || 0;
+            });
+
+            var diechengList = [];
+            diechengMap.forEach(function(val, name) {
+                var perf = calcPerformance(val.qaPass, val.completed, val.overdue);
+                diechengList.push({ name: name, rate: perf.rate, score: perf.score, overdue: val.overdue });
+            });
+
+            diechengList.sort(function(a, b) { return a.rate - b.rate; });
+
+            if (diechengViewMode === 'tail') {
+                diechengList = diechengList.slice(0, 15);
+            } else if (diechengViewMode === 'top') {
+                diechengList = diechengList.slice(-15);
+            }
+
+            diechengChart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function(params) {
+                        return params[0].name + '<br/>指标达成率: ' + (params[0].value * 100).toFixed(2) + '%';
+                    }
+                },
+                grid: { top: 15, right: 60, bottom: 20, left: 110 },
+                xAxis: { type: 'value', min: 0.8, max: 1, axisLabel: { formatter: function(v) { return (v * 100) + '%'; } } },
+                yAxis: { type: 'category', data: diechengList.map(function(d) { return d.name; }) },
+                series: [{
+                    type: 'bar',
+                    data: diechengList.map(function(d) { return d.rate; }),
+                    barMaxWidth: 16,
+                    itemStyle: {
+                        color: function(params) { return params.value < 1.0 ? '#ef4444' : '#10b981'; },
+                        borderRadius: [0, 4, 4, 0]
+                    },
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: function(params) { return (params.value * 100).toFixed(2) + '%'; }
+                    }
+                }]
+            });
+        }
+
+        function setDiechengFilter(mode) {
+            diechengViewMode = mode;
+            ['tail', 'top', 'all'].forEach(function(m) {
+                var btn = document.getElementById('btn-' + m);
+                if (btn) {
+                    if (m === mode) {
+                        btn.className = 'px-2.5 py-1 rounded bg-rose-100 text-rose-700 font-semibold';
+                    } else {
+                        btn.className = 'px-2.5 py-1 rounded bg-slate-100 text-slate-600';
+                    }
+                }
+            });
+            updateCharts(currentFilteredData);
+        }
+
+        function renderTable(data) {
+            var tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            var baojieCount = data.filter(function(d){ return (d["工单类型"]||'').indexOf('保洁') !== -1 || (d["工单类型"]||'').indexOf('清洁') !== -1; }).length;
+            var lvhuaCount = data.filter(function(d){ return (d["工单类型"]||'').indexOf('绿化') !== -1; }).length;
+
+            var countText = '共 ' + data.length + ' 条数据';
+            if (activeWorkTypeFilter === 'ALL') {
+                countText += ' (' + baojieCount + ' 项保洁 + ' + lvhuaCount + ' 项绿化)';
+            }
+            document.getElementById('table-count').textContent = countText;
+
+            data.forEach(function(item) {
+                var tr = document.createElement('tr');
+                var rankInfo = globalRankMap.get(item["蝶城名称"]);
+                var rankText = rankInfo ? rankInfo.rankText : '第 1 名 (并列)';
+
+                tr.className = 'hover:bg-slate-50';
+
+                var isLvhua = (item["工单类型"] || '').indexOf('绿化') !== -1;
+                var typeBadge = isLvhua 
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">绿化</span>' 
+                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">保洁</span>';
+
+                var overdueBadge = (item["工单超时数"] || 0) > 0 
+                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 font-mono">${item["工单超时数"]}</span>`
+                    : '<span class="font-mono text-slate-400">0</span>';
+
+                var achieveRateBadge = (item["指标达成率"] || 0) < 1.0
+                    ? `<span class="font-mono font-bold text-red-600">${((item["指标达成率"] || 0) * 100).toFixed(2)}%</span>`
+                    : `<span class="font-mono font-bold text-indigo-600">100.00%</span>`;
+
+                tr.innerHTML = `
+                    <td class="p-2.5 text-center font-bold text-slate-700">${rankText}</td>
+                    <td class="p-2.5 font-medium">${item["城市群"] || '-'}</td>
+                    <td class="p-2.5">${item["城市"] || '-'}</td>
+                    <td class="p-2.5 font-semibold text-slate-800">${item["蝶城名称"] || '-'}</td>
+                    <td class="p-2.5">${item["工单类别"] || '周期'}</td>
+                    <td class="p-2.5">${typeBadge}</td>
+                    <td class="p-2.5 text-right font-mono">${(item["工单派发数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right font-mono">${(item["工单完成数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right">${overdueBadge}</td>
+                    <td class="p-2.5 text-right font-mono">${((item["工单完成率"] || 0) * 100).toFixed(2)}%</td>
+                    <td class="p-2.5 text-right font-mono">${(item["总质检数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right font-mono">${(item["质检合格数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right font-mono">${(item["质检不合格数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right font-mono">${((item["质检合格率"] || 0) * 100).toFixed(2)}%</td>
+                    <td class="p-2.5 text-right font-mono">${(item["虚假工单数"] || 0).toLocaleString()}</td>
+                    <td class="p-2.5 text-right">${achieveRateBadge}</td>
+                    <td class="p-2.5 text-center font-bold font-mono text-emerald-600">${item["考核得分"].toFixed(2)} 分</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function handleFileUpload(file) {
+            if (!file) return;
+
+            try {
+                var filename = file.name;
+                var lowerName = filename.toLowerCase();
+
+                if (lowerName.indexOf('.csv') !== -1) {
+                    Papa.parse(file, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) { parseUploadedJson(results.data, filename); },
+                        error: function(err) { showToast('CSV 文件解析失败: ' + err.message, 'error'); }
+                    });
+                } else {
+                    var reader = new FileReader();
+                    reader.onload = function(evt) {
+                        try {
+                            var data = new Uint8Array(evt.target.result);
+                            var workbook = XLSX.read(data, { type: 'array' });
+                            
+                            var aggregatedRows = [];
+                            workbook.SheetNames.forEach(function(sheetName) {
+                                var sheet = workbook.Sheets[sheetName];
+                                var json = XLSX.utils.sheet_to_json(sheet);
+                                aggregatedRows = aggregatedRows.concat(json);
+                            });
+
+                            parseUploadedJson(aggregatedRows, filename);
+                        } catch (err) {
+                            console.error("Excel read error:", err);
+                            showToast('Excel 表格解析失败，请检查文件格式', 'error');
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+            } catch (err) {
+                console.error("Upload error:", err);
+                showToast('文件读取异常: ' + err.message, 'error');
+            }
+        }
+
+        function parseUploadedJson(json, fileName) {
+            if (!json || json.length === 0) {
+                showToast('未提取到有效表格数据', 'error');
+                return;
+            }
+
+            var cleanNum = function(v) {
+                if (typeof v === 'number') return v;
+                if (!v) return 0;
+                return parseFloat(String(v).replace(/,/g, '').replace(/%/g, '')) || 0;
+            };
+
+            var parsed = [];
+            json.forEach(function(row) {
+                var diecheng = row["蝶城名称"] || row["蝶城"] || row["项目名称"] || row["项目"];
+                if (!diecheng) return;
+
+                var cluster = row["城市群"] || row["城市群名称"] || row["大区"] || "杭州城市群";
+                var city = row["城市"] || row["城市名称"] || "上海万净";
+                var category = row["工单类别"] || row["类别"] || "周期";
+                var type = row["工单类型"] || row["类型"] || "保洁";
+
+                var dispatch = cleanNum(row["工单派发数"] || row["派发数"] || row["派发件数"]);
+                var completed = cleanNum(row["工单完成数"] || row["完成数"] || row["完成件数"]);
+                var overdue = cleanNum(row["工单超时数"] || row["超时数"] || row["超时件数"]);
+                var qaPass = cleanNum(row["质检合格数"] || row["合格数"] || row["合格件数"]);
+                var rawQaTotal = cleanNum(row["总质检数"] || row["质检总数"]);
+                var qaTotal = Math.max(rawQaTotal, qaPass, completed);
+                var fake = cleanNum(row["虚假工单数"] || row["虚假数"]);
+
+                parsed.push({
+                    "城市群": String(cluster).trim(),
+                    "城市": String(city).trim(),
+                    "蝶城名称": String(diecheng).trim(),
+                    "工单类别": String(category).trim(),
+                    "工单类型": String(type).trim(),
+                    "工单派发数": dispatch,
+                    "工单完成数": completed,
+                    "工单超时数": overdue,
+                    "工单完成率": dispatch > 0 ? completed / dispatch : 1.0,
+                    "总质检数": qaTotal,
+                    "质检合格数": qaPass,
+                    "质检不合格数": Math.max(0, qaTotal - qaPass),
+                    "质检合格率": qaTotal > 0 ? qaPass / qaTotal : 1,
+                    "虚假工单数": fake
+                });
+            });
+
+            if (parsed.length === 0) {
+                showToast('未在此表格中识别到有效的蝶城工单数据', 'error');
+                return;
+            }
+
+            var cleanName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "自定义上传表格";
+            loadDataset(parsed, cleanName);
+            showToast('成功载入表格 [' + cleanName + '] (' + parsed.length + '条)。若需设定为默认底稿请点击【锁定为默认底稿】', 'success');
+        }
+
+        function resetFilters() {
+            document.getElementById('filterCluster').value = 'ALL';
+            document.getElementById('filterCity').value = 'ALL';
+            document.getElementById('searchDiecheng').value = '';
+            document.getElementById('filterAnomaly').value = 'ALL';
+            populateCityDropdown();
+            setWorkTypeFilter('ALL');
+        }
+
+        function exportCSV() {
+            if (!currentFilteredData || currentFilteredData.length === 0) {
+                showToast('当前没有可导出的筛选数据', 'error');
+                return;
+            }
+
+            var exportData = currentFilteredData.map(function(d) {
+                var rankInfo = globalRankMap.get(d["蝶城名称"]);
+                return {
+                    "全国排名": rankInfo ? rankInfo.rankText : '第 1 名',
+                    "城市群": d["城市群"],
+                    "城市": d["城市"],
+                    "蝶城名称": d["蝶城名称"],
+                    "工单类别": d["工单类别"],
+                    "工单类型": d["工单类型"],
+                    "工单派发数": d["工单派发数"],
+                    "工单完成数": d["工单完成数"],
+                    "工单超时数": d["工单超时数"],
+                    "工单完成率": (d["工单完成率"] * 100).toFixed(2) + '%',
+                    "总质检数": d["总质检数"],
+                    "质检合格数": d["质检合格数"],
+                    "质检不合格数": d["质检不合格数"],
+                    "质检合格率": (d["质检合格率"] * 100).toFixed(2) + '%',
+                    "虚假工单数": d["虚假工单数"],
+                    "指标达成率": (d["指标达成率"] * 100).toFixed(2) + '%',
+                    "考核得分": d["考核得分"].toFixed(2)
+                };
+            });
+
+            var csv = Papa.unparse(exportData);
+            var blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            var timestamp = new Date().toISOString().slice(0, 10);
+            link.download = `${activeSourceName}_分析导出_${activeWorkTypeFilter}_${timestamp}.csv`;
+            link.click();
+            showToast('CSV 报表导出成功！', 'success');
+        }
+    </script>
+</body>
+</html>
