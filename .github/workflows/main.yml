@@ -1,0 +1,35 @@
+name: Auto Sync Feishu Data
+
+on:
+  schedule:
+    # 每天北京时间早上 8:00 自动执行拉取
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 支持网页上手动点击立即同步
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Fetch Feishu Data
+        env:
+          APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        run: |
+          # 1. 获取飞书 Token
+          TOKEN_RES=$(curl -s -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d "{\"app_id\":\"$APP_ID\",\"app_secret\":\"$APP_SECRET\"}")
+          TOKEN=$(echo $TOKEN_RES | jq -r '.tenant_access_token')
+
+          # 2. 拉取最新飞书多维表格数据存为 json
+          curl -s -X GET "https://open.feishu.cn/open-apis/bitable/v1/apps/O4W5bYLWJa5GFxsrEUecyljynq7/tables/tbl0kSbPtXCj368j/records?page_size=500" \
+            -H "Authorization: Bearer $TOKEN" > data.json
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
