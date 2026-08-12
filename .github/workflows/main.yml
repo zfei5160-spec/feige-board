@@ -2,9 +2,8 @@ name: Auto Sync Feishu Data
 
 on:
   schedule:
-    # 每天北京时间早上 8:00 自动执行拉取
     - cron: '0 0 * * *'
-  workflow_dispatch: # 支持网页上手动点击立即同步
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -13,20 +12,56 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Fetch Feishu Data
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch All Feishu Data
         env:
           APP_ID: ${{ secrets.FEISHU_APP_ID }}
           APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
         run: |
-          # 1. 获取飞书 Token
-          TOKEN_RES=$(curl -s -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
-            -H "Content-Type: application/json; charset=utf-8" \
-            -d "{\"app_id\":\"$APP_ID\",\"app_secret\":\"$APP_SECRET\"}")
-          TOKEN=$(echo $TOKEN_RES | jq -r '.tenant_access_token')
+          python - << 'EOF'
+          import os, json, requests
 
-          # 2. 拉取最新飞书多维表格数据存为 json
-          curl -s -X GET "https://open.feishu.cn/open-apis/bitable/v1/apps/O4W5bYLWJa5GFxsrEUecyljynq7/tables/tbl0kSbPtXCj368j/records?page_size=500" \
-            -H "Authorization: Bearer $TOKEN" > data.json
+          app_id = os.environ['APP_ID']
+          app_secret = os.environ['APP_SECRET']
+
+          # 1. 获取 Token
+          token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+          token_res = requests.post(token_url, json={"app_id": app_id, "app_secret": app_secret}).json()
+          token = token_res.get("tenant_access_token")
+
+          # 2. 循环翻页获取全量数据
+          records_url = "https://open.feishu.cn/open-apis/bitable/v1/apps/O4W5bYLWJa5GFxsrEUecyljynq7/tables/tbl0kSbPtXCj368j/records"
+          headers = {"Authorization": f"Bearer {token}"}
+          all_items = []
+          page_token = ""
+          has_more = True
+
+          while has_more:
+              params = {"page_size": 500}
+              if page_token:
+                  params["page_token"] = page_token
+              
+              res = requests.get(records_url, headers=headers, params=params).json()
+              data = res.get("data", {})
+              items = data.get("items", [])
+              all_items.extend(items)
+              
+              has_more = data.get("has_more", False)
+              page_token = data.get("page_token", "")
+
+          # 3. 保存为全量 data.json
+          result = {"code": 0, "msg": "success", "data": {"items": all_items, "total": len(all_items)}}
+          with open("data.json", "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False)
+          print(f"成功拉取全量数据，共 {len(all_items)} 条记录！")
+          EOF
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
